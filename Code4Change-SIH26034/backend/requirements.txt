@@ -1,0 +1,30 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Code4Change – Backend Python Dependencies
+# Install with:  pip install -r requirements.txt
+# Python 3.10+ required
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.141.1
+uvicorn[standard]==0.30.1
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic==2.13.4
+
+# ── Image processing (Phase 4) ────────────────────────────────────────────────
+opencv-python-headless==4.10.0.84   # headless = no GUI deps, smaller install
+Pillow==10.4.0
+
+# ── OCR (Phase 5) ─────────────────────────────────────────────────────────────
+pytesseract==0.3.13
+# easyocr==1.7.1                    # optional alternative; uncomment in Phase 5
+
+# ── PDF generation (Phase 10) ─────────────────────────────────────────────────
+fpdf2==2.7.9
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-multipart==0.0.9             # required by FastAPI for file uploads
+aiofiles==23.2.1                    # async file I/O helpers
+
+# ── Development / testing ─────────────────────────────────────────────────────
+httpx==0.27.0                       # async HTTP client used in tests

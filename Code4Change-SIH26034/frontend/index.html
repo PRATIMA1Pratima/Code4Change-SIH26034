@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code4Change – Commodity Compliance</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       HEADER
+  ══════════════════════════════════════════════════════════════ -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div class="brand-icon" aria-hidden="true">✦</div>
+        <div>
+          <h1 class="brand-title">Code4Change</h1>
+          <p class="brand-subtitle">AI-Assisted Packaged Commodity Compliance System</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="badge badge-sih">SIH 2026</span>
+        <span class="badge badge-ps">SIH26034</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       DISCLAIMER BANNER
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="disclaimer-banner" role="note">
+    <span class="disclaimer-icon">⚠</span>
+    <span>This is an <strong>AI-assisted preliminary compliance check</strong> only.
+    Results do not constitute a legal compliance certificate.</span>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       CONNECTION STATUS BANNER
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="connection-banner" id="connectionBanner" role="status" aria-live="polite" hidden>
+    <span class="conn-indicator" id="connIndicator" aria-hidden="true"></span>
+    <span id="connMessage">Checking backend connection…</span>
+    <span class="conn-meta" id="connMeta"></span>
+    <button class="conn-retry" id="btnConnRetry" hidden aria-label="Retry connecting to backend">↺ Retry</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       MAIN LAYOUT
+  ══════════════════════════════════════════════════════════════ -->
+  <main class="main-layout">
+
+    <!-- ── LEFT COLUMN: Upload + Preview + Actions ──────────────── -->
+    <section class="column column-left" aria-label="Image upload">
+
+      <!-- 1. Product Image Upload -->
+      <div class="card" id="card-upload">
+        <div class="card-header">
+          <span class="card-icon">📷</span>
+          <h2 class="card-title">Product Image</h2>
+        </div>
+
+        <div
+          class="drop-zone"
+          id="dropZone"
+          role="button"
+          tabindex="0"
+          aria-label="Click or drag and drop a product image here"
+        >
+          <div class="drop-zone-inner" id="dropZoneInner">
+            <div class="drop-icon" aria-hidden="true">⬆</div>
+            <p class="drop-primary">Click to browse or drag &amp; drop</p>
+            <p class="drop-secondary">JPEG · PNG · BMP · TIFF · WEBP — max 10 MB</p>
+          </div>
+          <input
+            type="file"
+            id="fileInput"
+            accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.webp"
+            aria-label="Select product image"
+            hidden
+          />
+        </div>
+
+        <!-- 2. Image Preview -->
+        <div class="preview-area" id="previewArea" hidden>
+          <img
+            id="previewImg"
+            class="preview-img"
+            alt="Selected product image preview"
+          />
+          <div class="preview-meta" id="previewMeta"></div>
+        </div>
+
+        <div class="upload-actions">
+          <button
+            class="btn btn-secondary"
+            id="btnClear"
+            disabled
+            aria-label="Clear selected image"
+          >✕ Clear</button>
+
+          <!-- 3. Analyse button -->
+          <button
+            class="btn btn-primary"
+            id="btnAnalyse"
+            disabled
+            aria-label="Analyse the selected product image"
+          >
+            <span class="btn-icon" aria-hidden="true">🔍</span>
+            Analyze Product
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading overlay (shown during API call) -->
+      <div class="loading-card" id="loadingCard" hidden aria-live="polite" aria-busy="true">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <p class="loading-title">Analysing product…</p>
+          <p class="loading-steps" id="loadingStep">Uploading image</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── RIGHT COLUMN: Results ─────────────────────────────────── -->
+    <section class="column column-right" aria-label="Analysis results">
+
+      <!-- Placeholder shown before first analysis -->
+      <div class="results-placeholder" id="resultsPlaceholder">
+        <div class="placeholder-icon" aria-hidden="true">📦</div>
+        <p class="placeholder-title">No analysis yet</p>
+        <p class="placeholder-sub">Upload a product image and click <strong>Analyze Product</strong> to begin.</p>
+      </div>
+
+      <!-- Results wrapper (hidden until first successful response) -->
+      <div id="resultsWrapper" hidden>
+
+        <!-- 6. Compliance Score + 7. Status -->
+        <div class="score-row">
+          <div class="score-card" id="scoreCard" aria-label="Compliance score">
+            <div class="score-number" id="scoreNumber">—</div>
+            <div class="score-label">Compliance Score</div>
+            <div class="score-bar-track" aria-hidden="true">
+              <div class="score-bar-fill" id="scoreBarFill"></div>
+            </div>
+          </div>
+          <div class="status-card" id="statusCard" aria-label="Compliance status">
+            <div class="status-icon" id="statusIcon" aria-hidden="true"></div>
+            <div class="status-text" id="statusText">—</div>
+            <div class="status-label">Compliance Status</div>
+            <div class="status-id">Inspection #<span id="statusInspectionId">—</span></div>
+          </div>
+        </div>
+
+        <!-- 5. Detected Declarations -->
+        <div class="card" id="card-declarations">
+          <div class="card-header">
+            <span class="card-icon">📋</span>
+            <h2 class="card-title">Detected Declarations</h2>
+          </div>
+          <table class="declarations-table" aria-label="Detected declarations">
+            <thead>
+              <tr>
+                <th scope="col">Declaration</th>
+                <th scope="col">Detected Value</th>
+                <th scope="col" class="col-status">Status</th>
+              </tr>
+            </thead>
+            <tbody id="declarationsBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 8. Violations -->
+        <div class="card" id="card-violations">
+          <div class="card-header">
+            <span class="card-icon">⚠</span>
+            <h2 class="card-title">Violations &amp; Notices</h2>
+          </div>
+          <div id="violationsList" class="violations-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- 4. OCR Extracted Text -->
+        <div class="card" id="card-ocr">
+          <div class="card-header">
+            <span class="card-icon">🔤</span>
+            <h2 class="card-title">OCR Extracted Text</h2>
+            <button
+              class="btn-icon-only"
+              id="btnToggleOcr"
+              aria-expanded="false"
+              aria-controls="ocrTextContent"
+              title="Toggle OCR text"
+            >▾</button>
+          </div>
+          <div id="ocrTextContent" class="ocr-text" hidden>
+            <pre id="ocrText" aria-label="Raw text extracted from label"></pre>
+          </div>
+        </div>
+
+        <!-- 9. Generate Report -->
+        <div class="report-row">
+          <button class="btn btn-report" id="btnReport" aria-label="Generate PDF compliance report">
+            <span aria-hidden="true">📄</span> Generate Report
+          </button>
+          <span class="report-note" id="reportNote"></span>
+        </div>
+
+      </div><!-- /resultsWrapper -->
+
+    </section>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       INSPECTION HISTORY
+  ══════════════════════════════════════════════════════════════ -->
+  <section class="history-section" aria-label="Inspection history">
+
+    <!-- Header row: title + refresh -->
+    <div class="history-header">
+      <h2 class="history-title">
+        <span aria-hidden="true">🕑</span> Inspection History
+      </h2>
+      <button class="btn btn-secondary btn-sm" id="btnRefreshHistory"
+              aria-label="Refresh inspection history">↺ Refresh</button>
+    </div>
+
+    <!-- Stats bar (hidden until data loads) -->
+    <div class="history-stats" id="historyStats" hidden aria-label="Inspection statistics">
+      <div class="stat-item">
+        <span class="stat-value" id="statTotal">0</span>
+        <span class="stat-label">Total</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item stat-compliant">
+        <span class="stat-value" id="statCompliant">0</span>
+        <span class="stat-label">Compliant</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item stat-noncompliant">
+        <span class="stat-value" id="statNonCompliant">0</span>
+        <span class="stat-label">Non-Compliant</span>
+      </div>
+      <div class="stat-divider" aria-hidden="true"></div>
+      <div class="stat-item">
+        <span class="stat-value" id="statAvgScore">—</span>
+        <span class="stat-label">Avg Score</span>
+      </div>
+    </div>
+
+    <!-- Filter + search bar -->
+    <div class="history-controls" id="historyControls">
+      <div class="history-filter-group" role="group" aria-label="Filter by status">
+        <button class="filter-btn active" data-filter="all"         aria-pressed="true">All</button>
+        <button class="filter-btn"        data-filter="COMPLIANT"   aria-pressed="false">Compliant</button>
+        <button class="filter-btn"        data-filter="NON_COMPLIANT" aria-pressed="false">Non-Compliant</button>
+      </div>
+      <div class="history-search-wrap">
+        <input
+          type="search"
+          id="historySearch"
+          class="history-search"
+          placeholder="Search by filename…"
+          aria-label="Search inspections by filename"
+          autocomplete="off"
+        />
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <p class="history-empty" id="historyEmpty">No inspections recorded yet.</p>
+
+    <!-- Results table (hidden until data loads) -->
+    <div id="historyTableWrapper" hidden>
+      <table class="history-table" aria-label="Past inspections">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Date &amp; Time</th>
+            <th scope="col">Image</th>
+            <th scope="col">Score</th>
+            <th scope="col">Status</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+
+      <!-- Pagination controls -->
+      <div class="pagination" id="pagination" aria-label="Pagination">
+        <button class="page-btn" id="pagePrev" aria-label="Previous page" disabled>‹ Prev</button>
+        <span class="page-info" id="pageInfo"></span>
+        <button class="page-btn" id="pageNext" aria-label="Next page" disabled>Next ›</button>
+      </div>
+
+      <p class="history-total" id="historyTotal"></p>
+    </div>
+
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════════════ -->
+  <footer class="site-footer">
+    <p>Code4Change &mdash; Smart India Hackathon 2026 &middot; Problem Statement SIH26034</p>
+    <p class="footer-disclaimer">For demonstration purposes only. Not a legal compliance tool.</p>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
