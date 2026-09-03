@@ -56,43 +56,42 @@ Product Image → OpenCV Preprocessing → Tesseract OCR → Declaration Detecti
 ```
 Code4Change-SIH26034/
 ├── frontend/
-├── index.html
-├── css/
-│   └── style.css
-└── js/
-    ├── app.js
-    ├── api.js
-    ├── state.js
-    ├── ui.js
-    ├── pages.js
-    └── mobile-menu.js
+│   ├── index.html
+│   ├── css/
+│   │   └── style.css
+│   └── js/
+│       ├── app.js
+│       ├── api.js
+│       ├── state.js
+│       ├── ui.js
+│       ├── pages.js
+│       └── mobile-menu.js
 │
 ├── backend/
 │   ├── app/
-│   │   ├── main.py         # FastAPI app + middleware + router registration
-│   │   ├── config.py       # All configuration / environment variables
-│   │   ├── database.py     # SQLite connection + schema
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
 │   │   ├── api/
-│   │   │   ├── inspection.py   # POST /api/inspect, GET /api/inspection/{id}
-│   │   │   └── history.py      # GET /api/history
+│   │   │   ├── inspection.py
+│   │   │   └── history.py
 │   │   ├── services/
-│   │   │   ├── image_processor.py   # OpenCV preprocessing
-│   │   │   ├── ocr_service.py       # Tesseract / EasyOCR abstraction
-│   │   │   ├── compliance_engine.py # Declaration extraction + rule checking
-│   │   │   └── report_generator.py  # PDF generation
+│   │   │   ├── image_processor.py
+│   │   │   ├── ocr_service.py
+│   │   │   ├── compliance_engine.py
+│   │   │   └── report_generator.py
 │   │   └── models/
-│   │       └── inspection.py    # Pydantic schemas (DTOs)
-│   ├── uploads/             # Saved product images
-│   ├── reports/             # Generated PDF reports
+│   │       └── inspection.py
+│   ├── uploads/
+│   ├── reports/
 │   ├── requirements.txt
-│   └── run.py               # Development launcher
+│   └── run.py
 │
 ├── database/
-│   └── inspections.db       # SQLite database (auto-created)
-├── sample_images/           # Test images for demo
+│   └── inspections.db
+├── sample_images/
 ├── .gitignore
 └── README.md
-```
 
 ---
 
