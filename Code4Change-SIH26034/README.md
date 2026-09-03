@@ -56,10 +56,16 @@ Product Image → OpenCV Preprocessing → Tesseract OCR → Declaration Detecti
 ```
 Code4Change-SIH26034/
 ├── frontend/
-│   ├── index.html          # Main inspector interface
-│   ├── css/style.css       # Styles
-│   ├── js/app.js           # API calls + UI logic
-│   └── assets/             # Images / icons
+├── index.html
+├── css/
+│   └── style.css
+└── js/
+    ├── app.js
+    ├── api.js
+    ├── state.js
+    ├── ui.js
+    ├── pages.js
+    └── mobile-menu.js
 │
 ├── backend/
 │   ├── app/
