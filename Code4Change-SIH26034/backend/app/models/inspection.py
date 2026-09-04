@@ -75,6 +75,14 @@ class InspectionResult(BaseModel):
         default="",
         description="Saved filename of the uploaded image"
     )
+    image_url: str | None = Field(
+        default=None,
+        description="Browser-accessible URL for the uploaded image"
+    )
+    product_name: str | None = Field(
+        default=None,
+        description="Product name detected from the label"
+    )
     report_path: str | None = Field(
         default=None,
         description="Relative path to the generated PDF report, if available"
@@ -92,6 +100,8 @@ class InspectionSummary(BaseModel):
     compliance_score: float
     status: ComplianceStatus
     image_filename: str
+    image_url: str | None = None
+    product_name: str | None = None
 
     class Config:
         use_enum_values = True

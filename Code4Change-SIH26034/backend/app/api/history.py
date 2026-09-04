@@ -6,6 +6,7 @@ GET  /api/history/stats        – aggregate counts and average score
 DELETE /api/inspection/{id}    – remove a single inspection record
 """
 
+import json
 import math
 from pathlib import Path
 from typing import Optional
@@ -82,7 +83,8 @@ async def get_history(
             # Paginated results
             rows = conn.execute(
                 f"""
-                SELECT id, timestamp, compliance_score, status, image_path
+                  SELECT id, timestamp, compliance_score, status, image_path,
+                      detected_declarations
                 FROM inspections
                 {where}
                 ORDER BY id DESC
@@ -106,6 +108,14 @@ async def get_history(
             image_filename=Path(dict(row)["image_path"]).name
             if dict(row).get("image_path")
             else "",
+            image_url=(
+                f"/uploads/{Path(dict(row)['image_path']).name}"
+                if dict(row).get("image_path") else None
+            ),
+            product_name=(
+                json.loads(dict(row)["detected_declarations"]).get("product_name")
+                if dict(row).get("detected_declarations") else None
+            ),
         )
         for row in rows
     ]

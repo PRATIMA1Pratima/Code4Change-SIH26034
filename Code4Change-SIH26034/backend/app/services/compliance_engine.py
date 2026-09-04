@@ -342,19 +342,19 @@ _MFG_RE = re.compile(
 # code) on any line, which is a strong address indicator.
 _ADDR_KEYWORD_RE = re.compile(
     r"""
-    (?:address|addr|add)\.?\s*[:\-]?\s*
-    (.{10,120})                   # at least 10 chars of address content
+    ^\s*(?:address|addr|add)\.?\s*[:\-]\s*
+    (.{10,120}?)\s*$              # explicitly labelled address line
     """,
-    re.IGNORECASE | re.VERBOSE,
+    re.IGNORECASE | re.VERBOSE | re.MULTILINE,
 )
 
 _ADDR_PINCODE_RE = re.compile(
     r"""
-    ([A-Za-z0-9 ,\-\.]+          # street / area name
+    ^\s*([A-Za-z0-9 ,\-\.]{4,}  # street / area name on one OCR line
     \b\d{6}\b                    # 6-digit PIN code
-    (?:\s*,\s*[A-Za-z ]+)?)      # optional state/country after PIN
+    (?:\s*,?\s*[A-Za-z ]+)?)\s*$ # optional state/country after PIN
     """,
-    re.IGNORECASE | re.VERBOSE,
+    re.IGNORECASE | re.VERBOSE | re.MULTILINE,
 )
 
 # ── Manufacturing / Packing Date ──────────────────────────────────────────────
@@ -405,13 +405,16 @@ _CONSUMER_PHONE_RE = re.compile(
         |help\s*(?:line|desk)?
         |toll[\s\-]?free
         |care\s*(?:no|number|no\.)?
+        |call\s*us\s*(?:at)?
     )
     \s*[:\-]?\s*
     (
         (?:\+91[\s\-]?)?                      # optional country code
-        (?:1800[\s\-]?\d{3,7}[\s\-]?\d{0,4}  # 1800 toll-free
-           |\d{3,5}[\s\-]\d{3,4}[\s\-]?\d{0,4}  # landline / mobile
-           |\d{10,13})                        # plain 10-digit
+        (?:
+            1800(?:[\s\-]?\d{2,7}){1,2}       # 1800 22 4020 / 1800-123-4567
+            |\d{3,5}[\s\-]\d{3,4}[\s\-]?\d{0,4}  # landline / mobile
+            |\d{10,13}                         # plain 10-digit
+        )
     )
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -549,16 +552,23 @@ def _extract_product_name(text: str) -> str | None:
     if m:
         return m.group(1).strip()
 
-    # Priority 2: first non-empty line that doesn't look like another field
+    # Priority 2: prominent uppercase title lines such as "MOONG DAL".
+    # Keep this conservative so slogans and declaration lines are not treated
+    # as product names.
     for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
+        candidate = line.strip()
+        words = candidate.split()
+        if not 1 <= len(words) <= 4 or len(candidate) < 3:
             continue
-        if _NON_PRODUCT_LINE_RE.match(stripped):
+        if not re.search(r"[A-Za-z]", candidate) or candidate != candidate.upper():
             continue
-        # Must contain at least one letter and be reasonably short
-        if re.search(r"[A-Za-z]", stripped) and len(stripped) <= 80:
-            return stripped
+        if _NON_PRODUCT_LINE_RE.search(candidate):
+            continue
+        if re.fullmatch(r"(?:MFD|MFG|MRP|PKD|EXP|FSSAI|BATCH|LOT|QTY|N\.?QTY|NET|DATE)\s*[:.\-]?", candidate, re.IGNORECASE):
+            continue
+        if re.search(r"\b(?:fresh|contents|goodness|savoury|nutrition|ingredients?)\b", candidate, re.IGNORECASE):
+            continue
+        return candidate
 
     return None
 
@@ -595,7 +605,56 @@ def extract_declarations(text: str) -> dict[str, str | None]:
     }
 
 
-def check_compliance(declarations: dict[str, str | None]) -> dict:
+_FIELD_ANCHORS: dict[str, re.Pattern] = {
+    "mrp": re.compile(r"\b(?:m\.?r\.?p\.?|maximum\s+retail)\b", re.IGNORECASE),
+    "net_quantity": re.compile(r"\b(?:net\s*(?:wt|weight|qty|quantity|content)?|n\.?\s*qty)\b", re.IGNORECASE),
+    "manufacturer": re.compile(r"\b(?:mfg|mfr|manufactured|marketed|packed|packer)\b", re.IGNORECASE),
+    "address": re.compile(r"\b(?:address|addr|pin)\b", re.IGNORECASE),
+    "manufacturing_date": re.compile(r"\b(?:mfg|mfd|manufacturing|packed\s+on|pkd)\b", re.IGNORECASE),
+    "consumer_care": re.compile(r"\b(?:consumer|customer|helpline|toll\s*free|email|call\s+us)\b", re.IGNORECASE),
+}
+
+
+def extract_declarations_from_candidates(candidates: list[dict]) -> tuple[dict[str, str | None], dict, set[str]]:
+    """Select each declaration from the best OCR candidate and retain evidence."""
+    chosen = {key: None for key in DECLARATION_LABELS}
+    evidence: dict[str, dict] = {}
+    ranks: dict[str, tuple[int, int]] = {}
+    all_text = "\n".join(str(candidate.get("text", "")) for candidate in candidates)
+
+    for candidate in candidates:
+        text = str(candidate.get("text", ""))
+        if not text.strip():
+            continue
+        declarations = extract_declarations(text)
+        for key, value in declarations.items():
+            if not value:
+                continue
+            rule = _RULE_BY_KEY[key]
+            valid = rule.validator is None or rule.validator(value) is None
+            rank = (2 if valid else 1, (1 if candidate.get("source") == "original" else 0) * 1000 + len(value))
+            if key not in ranks or rank > ranks[key]:
+                chosen[key] = value
+                ranks[key] = rank
+                evidence[key] = {
+                    "text": value,
+                    "source": candidate.get("source"),
+                    "image": candidate.get("image"),
+                    "psm": candidate.get("psm"),
+                }
+
+    unreadable = {
+        key for key, anchor in _FIELD_ANCHORS.items()
+        if chosen.get(key) is None and anchor.search(all_text)
+    }
+    return chosen, evidence, unreadable
+
+
+def check_compliance(
+    declarations: dict[str, str | None],
+    unreadable_fields: set[str] | None = None,
+    evidence: dict | None = None,
+) -> dict:
     """Evaluate *declarations* against the COMPLIANCE_RULES registry.
 
     Scoring
@@ -615,6 +674,8 @@ def check_compliance(declarations: dict[str, str | None]) -> dict:
       "declaration_status" : dict        # key → {found, valid, severity, value, message}
     }
     """
+    unreadable_fields = unreadable_fields or set()
+    evidence = evidence or {}
     max_points:    float = 0.0
     earned_points: float = 0.0
     violations:    list[str] = []
@@ -631,8 +692,12 @@ def check_compliance(declarations: dict[str, str | None]) -> dict:
 
         if not present:
             # Field completely missing — use severity to set message prefix
-            prefix  = "[MISSING]" if rule.required else "[WARNING]"
-            message = f"{prefix}  {rule.label} – declaration not detected on the label"
+            if rule.key in unreadable_fields:
+                prefix = "[UNREADABLE]" if rule.required else "[WARNING]"
+                message = f"{prefix}  {rule.label} – label was seen but its value could not be read reliably"
+            else:
+                prefix = "[MISSING]" if rule.required else "[WARNING]"
+                message = f"{prefix}  {rule.label} – declaration not detected on the label"
         else:
             # Field is present — run validator if one exists
             if rule.validator is not None:
@@ -672,6 +737,8 @@ def check_compliance(declarations: dict[str, str | None]) -> dict:
             "severity": rule.severity,
             "value":    value,
             "message":  message,
+            "state":    "FOUND" if present else ("UNREADABLE" if rule.key in unreadable_fields else "MISSING"),
+            "evidence": evidence.get(rule.key),
         }
 
     # ── Final score and status ─────────────────────────────────────────────
@@ -686,7 +753,7 @@ def check_compliance(declarations: dict[str, str | None]) -> dict:
     }
 
 
-def run_compliance_pipeline(ocr_text: str) -> dict:
+def run_compliance_pipeline(ocr_text: str, candidates: list[dict] | None = None) -> dict:
     """Convenience wrapper: extract → check → return combined result.
 
     Args:
@@ -696,8 +763,13 @@ def run_compliance_pipeline(ocr_text: str) -> dict:
         Dict with keys: compliance_score, status, violations,
         declaration_status, detected_declarations.
     """
-    declarations = extract_declarations(ocr_text)
-    result       = check_compliance(declarations)
+    if candidates:
+        declarations, evidence, unreadable = extract_declarations_from_candidates(candidates)
+    else:
+        declarations = extract_declarations(ocr_text)
+        evidence = {}
+        unreadable = set()
+    result = check_compliance(declarations, unreadable, evidence)
     result["detected_declarations"] = declarations
     return result
 

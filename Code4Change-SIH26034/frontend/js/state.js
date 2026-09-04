@@ -9,6 +9,7 @@ export const state = {
   currentImage: null,
   inspection: null,
   inspectionLoading: false,
+  inspectionSubmitting: false,
 };
 
 let renderApplication = () => {};

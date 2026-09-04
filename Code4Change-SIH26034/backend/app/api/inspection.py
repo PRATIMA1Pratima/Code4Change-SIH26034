@@ -10,6 +10,7 @@ Pipeline:
 """
 
 import json
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,6 +91,31 @@ async def inspect_product(
     # 1. Read raw bytes and validate
     raw_bytes = await file.read()
     _validate_upload(file, raw_bytes)
+    content_hash = hashlib.sha256(raw_bytes).hexdigest()
+
+    # Reusing the exact same file should not create a second history record.
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM inspections WHERE content_hash = ? ORDER BY id DESC LIMIT 1",
+            (content_hash,),
+        ).fetchone()
+    if existing is not None:
+        data = row_to_dict(existing)
+        existing_filename = Path(data["image_path"]).name
+        return InspectionResult(
+            inspection_id=data["id"],
+            timestamp=data["timestamp"],
+            extracted_text=data["extracted_text"],
+            detected_declarations=data["detected_declarations"],
+            declaration_status=data.get("declaration_status", {}),
+            compliance_score=data["compliance_score"],
+            status=data["status"],
+            violations=data["violations"],
+            image_filename=existing_filename,
+            image_url=f"/uploads/{existing_filename}",
+            product_name=data.get("detected_declarations", {}).get("product_name"),
+            report_path=data.get("report_path"),
+        )
 
     # 2. Save uploaded file with a safe name
     safe_name = _safe_filename(file.filename or "upload.jpg")
@@ -114,7 +140,15 @@ async def inspect_product(
         ocr_error = ocr_result.get("error")  # may be None
 
         # 5. Compliance pipeline (Phases 6–7)
-        compliance = run_compliance_pipeline(extracted_text)
+        compliance = run_compliance_pipeline(
+            extracted_text,
+            ocr_result.get("candidates"),
+        )
+
+        # Persist OCR availability problems with the inspection and PDF, not
+        # only in the transient POST response.
+        if ocr_error:
+            compliance["violations"].insert(0, f"OCR notice: {ocr_error}")
 
         # 6. Persist to database first — we need the real inspection_id for the PDF
         with get_db() as conn:
@@ -123,8 +157,8 @@ async def inspect_product(
                 INSERT INTO inspections
                     (timestamp, image_path, extracted_text,
                      detected_declarations, declaration_status,
-                     compliance_score, status, violations, report_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     compliance_score, status, violations, report_path, content_hash)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     timestamp.isoformat(),
@@ -136,6 +170,7 @@ async def inspect_product(
                     compliance["status"],
                     json.dumps(compliance["violations"]),
                     None,   # report_path updated below after PDF generation
+                    content_hash,
                 ),
             )
             inspection_id = cursor.lastrowid
@@ -160,11 +195,6 @@ async def inspect_product(
                     (report_path_str, inspection_id),
                 )
 
-        # If OCR failed, surface the error inside violations so the UI can show it
-        violations = list(compliance["violations"])
-        if ocr_error:
-            violations.insert(0, f"OCR notice: {ocr_error}")
-
         return InspectionResult(
             inspection_id=inspection_id,
             timestamp=timestamp,
@@ -173,8 +203,10 @@ async def inspect_product(
             declaration_status=compliance.get("declaration_status", {}),
             compliance_score=compliance["compliance_score"],
             status=compliance["status"],
-            violations=violations,
+            violations=compliance["violations"],
             image_filename=safe_name,
+            image_url=f"/uploads/{safe_name}",
+            product_name=compliance["detected_declarations"].get("product_name"),
             report_path=report_path_str,
         )
 
@@ -224,6 +256,8 @@ async def get_inspection(inspection_id: int) -> InspectionResult:
         status=data["status"],
         violations=data["violations"],
         image_filename=image_filename,
+        image_url=f"/uploads/{image_filename}" if image_filename else None,
+        product_name=data.get("detected_declarations", {}).get("product_name"),
         report_path=data.get("report_path"),
     )
 

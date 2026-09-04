@@ -78,3 +78,7 @@ export function statusValue(item) {
 export function scoreValue(item) {
   return item?.compliance_score ?? item?.score;
 }
+
+export function imageUrl(item) {
+  return item?.image_url ? `${API_BASE_URL}${item.image_url}` : null;
+}
