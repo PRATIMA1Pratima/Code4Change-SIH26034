@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS inspections (
     compliance_score      REAL    NOT NULL DEFAULT 0.0,
     status                TEXT    NOT NULL DEFAULT 'UNKNOWN',
     violations            TEXT    NOT NULL DEFAULT '[]',   -- JSON array
-    report_path           TEXT             DEFAULT NULL
+    report_path           TEXT             DEFAULT NULL,
+    content_hash          TEXT             DEFAULT NULL
 );
 """
 
@@ -83,6 +84,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
             "declaration_status TEXT NOT NULL DEFAULT '{}'"
         )
         print("[DB] Migration applied: added declaration_status column")
+
+    if "content_hash" not in existing_cols:
+        conn.execute(
+            "ALTER TABLE inspections ADD COLUMN content_hash TEXT DEFAULT NULL"
+        )
+        print("[DB] Migration applied: added content_hash column")
 
 
 def init_db() -> None:

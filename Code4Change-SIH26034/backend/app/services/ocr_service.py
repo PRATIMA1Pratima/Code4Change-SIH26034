@@ -166,21 +166,13 @@ def extract_text(image_path: Path) -> dict:
     # Point pytesseract at the correct binary
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
-    # Build the Tesseract config string
-    # --oem  : OCR Engine Mode  (3 = LSTM, recommended)
-    # --psm  : Page Segmentation Mode
-    # -c tessedit_char_blacklist : suppress characters that never appear on
-    #   product labels and cause false positives (backtick, pipe, caret, etc.)
-    tesseract_config = (
-        f"--oem {OCR_OEM} "
-        f"--psm {OCR_PSM} "
-        r"-c tessedit_char_blacklist=`|^{}\<>"
-    )
-
-    logger.info("[ocr] running Tesseract on %s  lang=%s psm=%d", image_path.name, OCR_LANG, OCR_PSM)
-
-    def _run_tesseract(path: Path) -> tuple[bool, str, str | None]:
+    def _run_tesseract(path: Path, psm: int) -> tuple[bool, str, str | None]:
         """Run Tesseract on *path*. Returns (success, raw_text, error_msg)."""
+        tesseract_config = (
+            f"--oem {OCR_OEM} "
+            f"--psm {psm} "
+            r"-c tessedit_char_blacklist=`|^{}\<>"
+        )
         try:
             raw: str = pytesseract.image_to_string(
                 str(path),
@@ -211,49 +203,65 @@ def extract_text(image_path: Path) -> dict:
             return False, "", msg
 
     # ── Try preprocessed image first ──────────────────────────────────
-    success, raw_text, error = _run_tesseract(image_path)
+    # Packaging labels are sparse and multi-column. A high word count can still
+    # be unusable, so compare several OCR modes on both image versions.
+    original_path = _find_original(image_path)
+    image_sources: list[tuple[str, Path]] = [("processed", image_path)]
+    if original_path and original_path != image_path:
+        image_sources.append(("original", original_path))
 
-    if not success:
+    candidate_psms = list(dict.fromkeys((OCR_PSM, 3, 11)))
+    candidates: list[dict] = []
+    errors: list[str] = []
+    for source, path in image_sources:
+        for psm in candidate_psms:
+            logger.info("[ocr] running %s / psm=%d on %s", source, psm, path.name)
+            success, raw_text, error = _run_tesseract(path, psm)
+            if not success:
+                if error:
+                    errors.append(error)
+                continue
+            text = _clean_text(raw_text)
+            if text:
+                candidates.append({
+                    "source": source,
+                    "image": path.name,
+                    "psm": psm,
+                    "text": text,
+                    "word_count": _count_words(text),
+                })
+
+    if not candidates:
         return {
             "success": False, "text": "", "engine": "tesseract",
-            "word_count": 0, "low_quality": True, "error": error,
+            "word_count": 0, "low_quality": True,
+            "error": errors[0] if errors else "Tesseract returned no readable text.",
+            "candidates": [],
         }
-
-    clean_proc  = _clean_text(raw_text)
-    words_proc  = _count_words(clean_proc)
 
     # ── Try original upload as fallback if preprocessed gives few words ──
     # Adaptive thresholding can destroy fine strokes on synthetic or
     # high-contrast images; the original colour image may OCR better.
-    best_text  = clean_proc
-    best_words = words_proc
-    used_image = image_path.name
-
-    original_path = _find_original(image_path)
-    if original_path and words_proc < 10:
-        logger.info(
-            "[ocr] preprocessed gave only %d words; trying original %s",
-            words_proc, original_path.name
-        )
-        ok2, raw2, _ = _run_tesseract(original_path)
-        if ok2:
-            clean_orig  = _clean_text(raw2)
-            words_orig  = _count_words(clean_orig)
-            if words_orig > words_proc:
-                best_text  = clean_orig
-                best_words = words_orig
-                used_image = original_path.name
-                logger.info("[ocr] using original image (%d words vs %d)", words_orig, words_proc)
-
+    anchors = re.compile(
+        r"\b(?:m\.?r\.?p\.?|maximum\s+retail|net\s*(?:wt|weight|qty|quantity)|"
+        r"mfg|manufactured|marketed|consumer|customer|email|address|pin)\b",
+        re.IGNORECASE,
+    )
+    best = max(
+        candidates,
+        key=lambda candidate: (len(anchors.findall(candidate["text"])), candidate["word_count"]),
+    )
+    best_text = best["text"]
+    best_words = best["word_count"]
     low_q = best_words < OCR_MIN_WORDS
 
     if low_q:
         logger.warning(
             "[ocr] low word count (%d words) from %s — label may be unclear",
-            best_words, used_image
+            best_words, best["image"]
         )
     else:
-        logger.info("[ocr] extracted %d words from %s", best_words, used_image)
+        logger.info("[ocr] extracted %d words from %s", best_words, best["image"])
 
     return {
         "success":     True,
@@ -262,6 +270,7 @@ def extract_text(image_path: Path) -> dict:
         "word_count":  best_words,
         "low_quality": low_q,
         "error":       None,
+        "candidates":  candidates,
     }
 
 

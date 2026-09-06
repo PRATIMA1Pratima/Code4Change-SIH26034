@@ -123,7 +123,8 @@ function bindUpload() {
 }
 
 export async function submitInspection() {
-  if (!state.selectedFile) return;
+  if (!state.selectedFile || state.inspectionSubmitting) return;
+  state.inspectionSubmitting = true;
   renderProcessing();
   const form = new FormData();
   form.append('file', state.selectedFile);
@@ -133,13 +134,20 @@ export async function submitInspection() {
     const id = inspectionId(result) || result?.inspection?.inspection_id || result?.inspection?.id;
     if (id) {
       state.inspection = result?.inspection || result;
+      state.history = null;
+      state.historyError = null;
+      loadHistory();
       navigate(`/inspection/${encodeURIComponent(id)}`);
     } else {
       showToast('The inspection did not return a reference number.');
+      state.history = null;
+      loadHistory();
       navigate('/history');
     }
   } catch (error) {
     renderErrorPage(error.message, '/inspect');
+  } finally {
+    state.inspectionSubmitting = false;
   }
 }
 
@@ -175,18 +183,18 @@ export function resultPage() {
   }
 
   const item = state.inspection;
-  const image = state.currentImage;
   const declarations = item.detected_declarations;
+  const image = state.currentImage || (item.image_url ? `${API_BASE_URL}${item.image_url}` : null);
   const violations = arrayOf(item.violations);
   const score = scoreValue(item);
   const reference = inspectionId(item) || id;
 
   const content = `<div class="content"><div class="header-row"><div class="header-copy"><div class="eyebrow">Inspection result</div><h1>Inspection details</h1><p>Reference <span class="mono">${esc(reference)}</span> · ${formatDate(item.timestamp || item.created_at)}</p></div><div style="display:flex;gap:9px"><a class="button" href="${API_BASE_URL}/api/report/${encodeURIComponent(reference)}" target="_blank" rel="noopener">View report</a><button class="button button-primary" data-action="print-report">Print record</button></div></div>${disclaimer()}
-  <section class="panel"><div class="result-top">${image ? `<img class="result-image" src="${esc(image)}" alt="Inspection image">` : `<div class="preview-empty">Image preview is only available during the upload session.</div>`}<div><div class="eyebrow">Assisted review result</div><h2>${esc(item.image_filename || 'Image name unavailable')}</h2><div class="result-meta"><span class="tag">Reference ${esc(reference)}</span>${statusChip(item)}<span class="tag">${formatDate(item.timestamp || item.created_at)}</span></div><p class="muted" style="line-height:1.55;margin:0">This is a preliminary assessment based on the information read from the label. Review the image and applicable requirements before making a decision.</p></div><div class="score"><div class="score-number">${score == null ? 'Not available' : esc(score)}</div><div class="score-label">Compliance score</div></div></div></section>
-  <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>Label details</h2><p>Information read from the package label</p></div></div><div class="declaration-table">${declarationTable(declarations)}</div></section>
+  <section class="panel"><div class="result-top">${image ? `<img class="result-image" src="${esc(image)}" alt="Inspection image">` : `<div class="preview-empty">Image preview is unavailable.</div>`}<div><div class="eyebrow">Assisted review result</div><h2>${esc(item.product_name || declarations?.product_name || item.image_filename || 'Product name unavailable')}</h2><p class="muted" style="margin:4px 0 12px">${esc(item.image_filename || 'Image name unavailable')}</p><div class="result-meta"><span class="tag">Reference ${esc(reference)}</span>${statusChip(item)}<span class="tag">${formatDate(item.timestamp || item.created_at)}</span></div><p class="muted" style="line-height:1.55;margin:0">This is a preliminary assessment based on the information read from the label. Review the image and applicable requirements before making a decision.</p></div><div class="score"><div class="score-number">${score == null ? 'Not available' : esc(score)}</div><div class="score-label">Compliance score</div></div></div></section>
+  <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>Label details</h2><p>Information read from the package label</p></div></div><div class="declaration-table">${declarationTable(declarations, item.declaration_status)}</div></section>
   <div class="result-sections"><section class="list-card warning"><h3>Findings <span class="tag">${violations.length}</span></h3>${violations.length ? `<ul>${violations.map((value) => `<li><span class="bullet">!</span>${esc(typeof value === 'object' ? JSON.stringify(value) : value)}</li>`).join('')}</ul>` : `<div class="empty" style="padding:28px 0"><p>No findings were listed for this inspection.</p></div>`}</section>
   <section class="list-card"><h3>Text read from label</h3><div class="ocr-box">${esc(item.extracted_text || 'No text was returned.')}</div><button class="button button-quiet" style="margin-top:12px" data-action="copy-ocr">Copy text</button></section></div>
-  <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>Image evidence</h2><p>Review the original image and the details read from it</p></div></div><div class="panel-body">${image ? `<img style="width:100%;max-height:320px;object-fit:contain;background:var(--surface-soft);border-radius:5px;margin-top:10px" src="${esc(image)}" alt="Original inspection evidence">` : `<div class="preview-empty" style="margin-top:12px">Image preview is unavailable after reopening this record.</div>`}</div></section>
+  <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>Image evidence</h2><p>Review the original image and the details read from it</p></div></div><div class="panel-body">${image ? `<img style="width:100%;max-height:320px;object-fit:contain;background:var(--surface-soft);border-radius:5px;margin-top:10px" src="${esc(image)}" alt="Original inspection evidence">` : `<div class="preview-empty" style="margin-top:12px">Image preview is unavailable.</div>`}</div></section>
   <section class="panel" style="margin-top:18px"><div class="panel-head"><div><h2>Review checklist</h2><p>Use this preliminary result alongside your required review</p></div></div><div class="panel-body"><div class="checklist">${violations.length ? violations.map((value) => `<div class="check-item warn"><div class="check-icon">!</div><div><strong>Finding to review</strong><p>${esc(typeof value === 'object' ? JSON.stringify(value) : value)}</p></div></div>`).join('') : `<div class="check-item"><div class="check-icon">+</div><div><strong>No findings were listed</strong><p>This is not a declaration of compliance; review the image and applicable requirements.</p></div></div>`}<div class="reference-box"><strong>Regulatory reference</strong><br>Educational context only. Confirm requirements with the applicable regulator before making a determination.</div></div></div></section></div>`;
   shell(content, 'Inspection details');
 }

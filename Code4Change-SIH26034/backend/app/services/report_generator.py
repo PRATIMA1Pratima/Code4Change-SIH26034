@@ -108,7 +108,7 @@ def _strip_violation_prefix(msg: str) -> tuple[str, str]:
     Split '[MISSING]  MRP – detail' into ('[MISSING]', 'MRP – detail').
     Returns ('', msg) if no known prefix is found.
     """
-    for prefix in ("[MISSING]", "[INVALID]", "[WARNING]"):
+    for prefix in ("[MISSING]", "[UNREADABLE]", "[INVALID]", "[WARNING]"):
         if msg.startswith(prefix):
             rest = msg[len(prefix):].lstrip()
             return prefix, rest
@@ -291,7 +291,11 @@ def _build_pdf(inspection_id: int, data: dict):
         found = ds.get("found", value is not None and str(value).strip() != "")
         valid = ds.get("valid", found)
 
-        if found and valid:
+        state = ds.get("state", "FOUND" if found else "MISSING")
+        if state == "UNREADABLE":
+            status_text  = "Needs review"
+            status_clr   = CLR_WARNING
+        elif found and valid:
             status_text  = "Valid"
             status_clr   = CLR_COMPLIANT
         elif found and not valid:
@@ -325,7 +329,7 @@ def _build_pdf(inspection_id: int, data: dict):
                 bullet_clr = CLR_NONCOMPLIANT; bullet = "[!]"
             elif prefix == "[INVALID]":
                 bullet_clr = CLR_WARNING;      bullet = "[?]"
-            elif prefix == "[WARNING]":
+            elif prefix in ("[WARNING]", "[UNREADABLE]"):
                 bullet_clr = CLR_WARNING;      bullet = "[W]"
             else:
                 bullet_clr = CLR_MUTED;        bullet = "  -"

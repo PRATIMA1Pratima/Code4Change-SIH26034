@@ -1,5 +1,5 @@
 import { state, rerender } from './state.js';
-import { historyItems, inspectionId, scoreValue, statusValue } from './api.js';
+import { historyItems, imageUrl, inspectionId, scoreValue, statusValue } from './api.js';
 import { bindMobileMenu, mobileMenuMarkup } from './mobile-menu.js';
 
 const root = document.getElementById('root');
@@ -185,8 +185,10 @@ export function historyTable(items, options = {}) {
     <th>Reference</th><th>Captured</th><th>Score</th><th>Outcome</th><th>Actions</th>
   </tr></thead><tbody>${items.map((item, index) => {
     const id = inspectionId(item);
+    const image = imageUrl(item);
+    const productName = item?.product_name || 'Product name not detected';
     return `<tr data-testid="row-inspection-${esc(id || index)}">
-      <td><strong class="mono">${esc(id || 'Reference unavailable')}</strong><br><span class="muted">${esc(item?.image_filename || item?.filename || 'Image name unavailable')}</span></td>
+      <td><div style="display:flex;align-items:center;gap:10px">${image ? `<img src="${esc(image)}" alt="${esc(productName)}" style="width:42px;height:42px;object-fit:cover;border-radius:4px">` : ''}<div><strong class="mono">${esc(id || 'Reference unavailable')}</strong><br><strong>${esc(productName)}</strong><br><span class="muted">${esc(item?.image_filename || item?.filename || 'Image name unavailable')}</span></div></div></td>
       <td>${formatDate(item?.timestamp || item?.created_at || item?.createdAt)}</td>
       <td><strong>${scoreValue(item) == null ? 'Not available' : esc(scoreValue(item))}</strong></td>
       <td>${statusChip(item)}</td>
@@ -195,7 +197,7 @@ export function historyTable(items, options = {}) {
   }).join('')}</tbody></table></div>${options.pagination ? `<div class="pagination"><span class="page-note">Showing available records</span><button class="button" data-action="refresh-history">Refresh</button></div>` : ''}`;
 }
 
-export function declarationTable(values) {
+export function declarationTable(values, statuses = {}) {
   const fields = [
     ['mrp', 'MRP'],
     ['net_quantity', 'Net quantity'],
@@ -212,7 +214,11 @@ export function declarationTable(values) {
   return `<div class="table-wrap"><table><thead><tr><th>Label detail</th><th>What was read</th><th>Status</th></tr></thead><tbody>${fields.map(([key, label]) => {
     const value = values[key];
     const detected = value !== null && value !== undefined && String(value).trim() !== '';
-    return `<tr><td><strong>${label}</strong></td><td>${detected ? esc(value) : '<span class="muted">Not detected</span>'}</td><td><span class="declaration-status ${detected ? 'is-detected' : 'is-missing'}">${detected ? 'Detected' : 'Not detected'}</span></td></tr>`;
+    const state = statuses?.[key]?.state || (detected ? 'FOUND' : 'MISSING');
+    const unreadable = state === 'UNREADABLE';
+    const labelText = unreadable ? 'Needs review' : detected ? 'Detected' : 'Not detected';
+    const valueText = unreadable ? '<span class="muted">Label seen, but value could not be read reliably</span>' : detected ? esc(value) : '<span class="muted">Not detected</span>';
+    return `<tr><td><strong>${label}</strong></td><td>${valueText}</td><td><span class="declaration-status ${unreadable ? 'is-missing' : detected ? 'is-detected' : 'is-missing'}">${labelText}</span></td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 

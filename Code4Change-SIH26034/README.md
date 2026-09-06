@@ -275,7 +275,7 @@ No page reload is required. All state is managed in JavaScript.
 ### Test the API directly (curl)
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/inspect \
+curl -X POST http://127.0.0.1:8000/api/inspect 
   -F "file=@sample_images/test_label.jpg"
 ```
 
